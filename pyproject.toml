@@ -1,0 +1,18 @@
+[project]
+name = "omi-transcription"
+version = "1.0.0"
+description = "Lightweight audio transcription service for OMI devices using Groq's Whisper API"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi==0.109.0",
+    "uvicorn[standard]==0.27.0",
+    "python-multipart==0.0.6",
+    "groq>=0.11.0",
+    "sqlalchemy==2.0.25",
+    "python-dotenv==1.0.0",
+    "pydantic==2.5.3",
+    "aiofiles==23.2.1",
+    "apscheduler==3.10.4",
+    "requests>=2.31.0"
+]
