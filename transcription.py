@@ -23,10 +23,17 @@ class TranscriptionService:
         audio_files = glob.glob(f"{config.AUDIO_QUEUE_DIR}/*.wav")
 
         if not audio_files:
-            logger.info("No audio files to process")
+            logger.info("[BATCH] No audio files to process in queue")
             return results
 
-        logger.info(f"Processing {len(audio_files)} audio files")
+        # Log details about files found
+        logger.info("=" * 60)
+        logger.info(f"[BATCH] Found {len(audio_files)} audio files to process:")
+        for file in audio_files:
+            filename = os.path.basename(file)
+            file_size_mb = os.path.getsize(file) / (1024 * 1024)
+            logger.info(f"[BATCH]   - {filename} ({file_size_mb:.2f}MB)")
+        logger.info("=" * 60)
 
         for audio_path in audio_files:
             try:
@@ -90,6 +97,8 @@ class TranscriptionService:
                 if r2_key:
                     # Delete processed audio file only if successfully saved to R2
                     os.remove(audio_path)
+                    logger.info(f"[BATCH] ✅ Successfully transcribed {filename} for user {uid}")
+                    logger.info(f"[BATCH]    Transcript preview: {transcription.text[:100]}...")
 
                     results.append(
                         {
