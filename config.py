@@ -16,8 +16,8 @@ class Config:
     R2_ACCOUNT_ID = os.getenv("R2_ACCOUNT_ID")
     R2_ACCESS_KEY_ID = os.getenv("R2_ACCESS_KEY_ID")
     R2_SECRET_ACCESS_KEY = os.getenv("R2_SECRET_ACCESS_KEY")
-    # Bucket name is auto-selected based on environment
-    R2_BUCKET_NAME = "omi-dev" if ENVIRONMENT == "dev" else "omi"
+    # Bucket name can be explicitly set or auto-selected based on environment
+    R2_BUCKET_NAME = os.getenv("R2_BUCKET_NAME") or ("omi-dev" if ENVIRONMENT in ["dev", "development"] else "omi")
 
     # Batching settings
     BATCH_DURATION_SECONDS = int(os.getenv("BATCH_DURATION_SECONDS", 120))
