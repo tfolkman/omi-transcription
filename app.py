@@ -92,32 +92,50 @@ async def receive_streaming_audio(
     Receive raw audio bytes from OMI device real-time streaming.
     OMI sends raw PCM audio without WAV headers as octet-stream.
     """
+    # Log incoming request details
+    logger.info("=" * 60)
+    logger.info(f"[STREAMING] Incoming request from {request.client.host}")
+    logger.info(f"[STREAMING] Query params - uid: {uid}, sample_rate: {sample_rate}")
+    logger.info(f"[STREAMING] Content-Type: {request.headers.get('content-type', 'not specified')}")
+
     try:
         # Validate parameters
         sample_rate, uid = validate_audio_params(sample_rate, uid)
+        logger.info(f"[STREAMING] Validated params - uid: {uid}, sample_rate: {sample_rate}")
 
         # Read raw audio bytes
         raw_audio = await request.body()
+        raw_audio_size = len(raw_audio)
+        logger.info(f"[STREAMING] Received {raw_audio_size} raw audio bytes from OMI device")
 
         if not raw_audio:
+            logger.warning("[STREAMING] No audio data received - empty request body")
             raise HTTPException(status_code=400, detail="No audio data received")
 
         # Add WAV header to raw audio
         wav_audio = add_wav_header_to_raw_audio(raw_audio, sample_rate)
+        logger.info(f"[STREAMING] Added WAV header - total size now {len(wav_audio)} bytes")
 
         # Generate unique filename
         timestamp = int(datetime.now().timestamp())
         filename = f"streaming_{uid}_{timestamp}.wav"
         filepath = os.path.join(config.AUDIO_QUEUE_DIR, filename)
+        logger.info(f"[STREAMING] Generated filename: {filename}")
 
         # Save WAV file for batch processing
         with open(filepath, "wb") as f:
             f.write(wav_audio)
+        logger.info(f"[STREAMING] ✅ Successfully saved audio file to: {filepath}")
 
         # Calculate file size
         file_size_mb = len(wav_audio) / (1024 * 1024)
 
-        logger.info(f"Received streaming audio from {uid}: {filename} ({file_size_mb:.2f}MB)")
+        # Calculate approximate audio duration (16kHz, 16-bit mono)
+        audio_duration_seconds = raw_audio_size / (16000 * 2)  # 2 bytes per sample
+
+        logger.info(f"[STREAMING] File details - Size: {file_size_mb:.2f}MB, Duration: ~{audio_duration_seconds:.1f}s")
+        logger.info(f"[STREAMING] Audio queued for transcription - will process in {config.BATCH_DURATION_SECONDS}s")
+        logger.info("=" * 60)
 
         return JSONResponse(
             content={
