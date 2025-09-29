@@ -74,6 +74,7 @@ jobs:
     name: E2E Test with R2
     runs-on: ubuntu-latest
     needs: [lint-and-type-check]
+    timeout-minutes: 10
 
     env:
       R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
@@ -113,7 +114,7 @@ jobs:
 
       - name: Start server
         run: |
-          uv run python app.py &
+          uv run python app.py > server.log 2>&1 &
           echo $! > server.pid
           sleep 5
 
@@ -124,6 +125,16 @@ jobs:
       - name: Run E2E test with R2
         run: |
           uv run python tests/test_e2e_r2.py
+
+      - name: Show server logs on failure
+        if: failure()
+        run: |
+          echo "=== Server process status ==="
+          if [ -f server.pid ]; then
+            ps aux | grep $(cat server.pid) || true
+          fi
+          echo "=== Server logs ==="
+          cat server.log || echo "No server.log found"
 
       - name: Stop server
         if: always()
