@@ -110,5 +110,105 @@ class TestR2Storage:
         assert "duration_seconds" in transcript
 
 
+class TestStreamingAudio:
+    """Test real-time streaming audio functionality"""
+
+    def test_wav_header_generation(self):
+        """Test WAV header generation for raw audio"""
+        from audio_utils import create_wav_header
+
+        # Test header for 1 second of audio at 16kHz, 16-bit, mono
+        sample_rate = 16000
+        bits_per_sample = 16
+        num_channels = 1
+        duration_seconds = 1
+        data_length = sample_rate * duration_seconds * num_channels * (bits_per_sample // 8)
+
+        header = create_wav_header(data_length, sample_rate, num_channels, bits_per_sample)
+
+        # WAV header should be exactly 44 bytes
+        assert len(header) == 44
+
+        # Check RIFF header
+        assert header[0:4] == b"RIFF"
+        assert header[8:12] == b"WAVE"
+
+        # Check fmt chunk
+        assert header[12:16] == b"fmt "
+
+        # Check data chunk
+        assert header[36:40] == b"data"
+
+    def test_add_wav_header_to_raw_audio(self):
+        """Test adding WAV header to raw PCM audio"""
+        from audio_utils import add_wav_header_to_raw_audio
+
+        # Create fake raw audio (100 bytes)
+        raw_audio = b"\x00" * 100
+        sample_rate = 16000
+
+        wav_audio = add_wav_header_to_raw_audio(raw_audio, sample_rate)
+
+        # Result should be header (44 bytes) + raw audio (100 bytes)
+        assert len(wav_audio) == 144
+
+        # Check it starts with RIFF header
+        assert wav_audio[0:4] == b"RIFF"
+
+    def test_validate_audio_params(self):
+        """Test audio parameter validation"""
+        from audio_utils import validate_audio_params
+
+        # Test valid parameters
+        sample_rate, uid = validate_audio_params(16000, "user123")
+        assert sample_rate == 16000
+        assert uid == "user123"
+
+        # Test default sample rate
+        sample_rate, uid = validate_audio_params(None, "user456")
+        assert sample_rate == 16000
+        assert uid == "user456"
+
+        # Test invalid sample rate gets corrected to default
+        sample_rate, uid = validate_audio_params(999999, "user789")
+        assert sample_rate == 16000  # Should default to 16000
+        assert uid == "user789"
+
+        # Test missing UID raises error
+        with pytest.raises(ValueError, match="User ID"):
+            validate_audio_params(16000, None)
+
+        with pytest.raises(ValueError, match="User ID"):
+            validate_audio_params(16000, "")
+
+    def test_streaming_file_naming(self):
+        """Test streaming audio file naming convention"""
+        from datetime import datetime
+
+        uid = "test_user"
+        timestamp = int(datetime.now().timestamp())
+        filename = f"streaming_{uid}_{timestamp}.wav"
+
+        # Check filename format
+        assert filename.startswith("streaming_")
+        assert uid in filename
+        assert filename.endswith(".wav")
+
+    def test_raw_audio_size_calculation(self):
+        """Test raw audio size calculations"""
+        # 16kHz, 16-bit (2 bytes per sample), mono
+        sample_rate = 16000
+        bits_per_sample = 16
+        duration_seconds = 10
+
+        # Calculate expected size
+        expected_size = sample_rate * duration_seconds * (bits_per_sample // 8)
+        assert expected_size == 320000  # 10 seconds = 320KB
+
+        # Test size in MB
+        size_mb = expected_size / (1024 * 1024)
+        assert size_mb == pytest.approx(0.305, rel=1e-2)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

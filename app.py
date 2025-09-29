@@ -4,9 +4,10 @@ import os
 from datetime import datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import JSONResponse
 
+from audio_utils import add_wav_header_to_raw_audio, validate_audio_params
 from config import config
 from r2_storage import R2Storage
 from transcription import transcription_service
@@ -77,6 +78,64 @@ async def receive_audio(
 
     except Exception as e:
         logger.error(f"Error receiving audio: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Receive real-time streaming audio from OMI device
+@app.post("/streaming")
+async def receive_streaming_audio(
+    request: Request,
+    uid: str | None = Query(None, description="User ID"),
+    sample_rate: int | None = Query(None, description="Sample rate"),
+):
+    """
+    Receive raw audio bytes from OMI device real-time streaming.
+    OMI sends raw PCM audio without WAV headers as octet-stream.
+    """
+    try:
+        # Validate parameters
+        sample_rate, uid = validate_audio_params(sample_rate, uid)
+
+        # Read raw audio bytes
+        raw_audio = await request.body()
+
+        if not raw_audio:
+            raise HTTPException(status_code=400, detail="No audio data received")
+
+        # Add WAV header to raw audio
+        wav_audio = add_wav_header_to_raw_audio(raw_audio, sample_rate)
+
+        # Generate unique filename
+        timestamp = int(datetime.now().timestamp())
+        filename = f"streaming_{uid}_{timestamp}.wav"
+        filepath = os.path.join(config.AUDIO_QUEUE_DIR, filename)
+
+        # Save WAV file for batch processing
+        with open(filepath, "wb") as f:
+            f.write(wav_audio)
+
+        # Calculate file size
+        file_size_mb = len(wav_audio) / (1024 * 1024)
+
+        logger.info(f"Received streaming audio from {uid}: {filename} ({file_size_mb:.2f}MB)")
+
+        return JSONResponse(
+            content={
+                "status": "queued",
+                "uid": uid,
+                "filename": filename,
+                "size_mb": round(file_size_mb, 2),
+                "sample_rate": sample_rate,
+                "raw_bytes_received": len(raw_audio),
+                "message": f"Streaming audio received and queued. Will be transcribed within {config.BATCH_DURATION_SECONDS} seconds.",
+            }
+        )
+
+    except ValueError as e:
+        logger.error(f"Validation error in streaming: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error receiving streaming audio: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
