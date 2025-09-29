@@ -30,14 +30,14 @@ class TranscriptionService:
 
         for audio_path in audio_files:
             try:
-                # Extract metadata from filename (format: audio_UID_TIMESTAMP.wav)
+                # Extract metadata from filename (format: audio_UID_TIMESTAMP.wav or streaming_UID_TIMESTAMP.wav)
                 filename = os.path.basename(audio_path)
                 # Remove .wav extension and split
                 name_without_ext = filename.replace(".wav", "")
                 # Split only at the first and last underscore to handle UIDs with underscores
                 parts = name_without_ext.split("_")
-                if len(parts) >= 3 and parts[0] == "audio":
-                    # Join all parts except first (audio) and last (timestamp)
+                if len(parts) >= 3 and parts[0] in ["audio", "streaming"]:
+                    # Join all parts except first (audio/streaming) and last (timestamp)
                     uid = "_".join(parts[1:-1])
                     timestamp = int(parts[-1])
                 else:
