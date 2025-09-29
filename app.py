@@ -1,6 +1,5 @@
-from fastapi import FastAPI, UploadFile, File, Query, HTTPException, Depends
+from fastapi import FastAPI, UploadFile, File, Query, HTTPException
 from fastapi.responses import JSONResponse
-from sqlalchemy.orm import Session
 from typing import Optional, List
 import os
 import glob
@@ -10,7 +9,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import logging
 
 from config import config
-from models import Transcript, get_db
+from r2_storage import R2Storage
 from transcription import transcription_service
 
 # Setup logging
@@ -26,10 +25,18 @@ app = FastAPI(title="OMI Transcription Service", version="1.0.0")
 # Initialize scheduler for batch processing
 scheduler = AsyncIOScheduler()
 
+# Initialize R2 storage
+r2_storage = R2Storage(config)
+
 # Health check endpoint
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
+    return {
+        "status": "healthy",
+        "timestamp": datetime.utcnow().isoformat(),
+        "environment": config.ENVIRONMENT,
+        "r2_bucket": config.R2_BUCKET_NAME
+    }
 
 # Receive audio from OMI device
 @app.post("/audio")
@@ -73,71 +80,77 @@ async def receive_audio(
 @app.get("/transcripts/{uid}")
 async def get_transcripts(
     uid: str,
-    limit: int = Query(10, ge=1, le=100),
-    db: Session = Depends(get_db)
+    limit: int = Query(10, ge=1, le=100)
 ):
     """
-    Get transcripts for a specific user
+    Get transcripts for a specific user from R2
     """
-    transcripts = db.query(Transcript)\
-        .filter(Transcript.uid == uid)\
-        .order_by(Transcript.created_at.desc())\
-        .limit(limit)\
-        .all()
+    try:
+        transcripts = r2_storage.list_user_transcripts(uid, limit)
 
-    return {
-        "uid": uid,
-        "count": len(transcripts),
-        "transcripts": [
-            {
-                "id": t.id,
-                "text": t.transcript_text,
-                "filename": t.audio_filename,
-                "cost": t.cost_usd,
-                "created_at": t.created_at.isoformat(),
-                "duration_seconds": t.duration_seconds
-            }
-            for t in transcripts
-        ]
-    }
+        return {
+            "uid": uid,
+            "count": len(transcripts),
+            "transcripts": [
+                {
+                    "text": t.get('transcript_text'),
+                    "filename": t.get('audio_filename'),
+                    "cost": t.get('cost_usd'),
+                    "created_at": t.get('created_at'),
+                    "duration_seconds": t.get('duration_seconds'),
+                    "r2_key": t.get('r2_key')
+                }
+                for t in transcripts
+            ]
+        }
+    except Exception as e:
+        logger.error(f"Error fetching transcripts: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Get usage statistics
 @app.get("/stats")
-async def get_stats(db: Session = Depends(get_db)):
+async def get_stats():
     """
-    Get usage statistics and cost information
+    Get usage statistics and cost information from R2
     """
-    # Calculate stats for current month
-    now = datetime.utcnow()
-    month_start = datetime(now.year, now.month, 1)
+    try:
+        # Calculate stats for current month
+        now = datetime.utcnow()
 
-    month_transcripts = db.query(Transcript)\
-        .filter(Transcript.created_at >= month_start)\
-        .all()
+        # Get stats from R2
+        month_stats = r2_storage.get_stats(month=now.month, year=now.year)
 
-    total_cost = sum(t.cost_usd for t in month_transcripts)
-    total_files = len(month_transcripts)
+        # Get queue status
+        queue_files = len(glob.glob(f"{config.AUDIO_QUEUE_DIR}/*.wav"))
 
-    # Get queue status
-    queue_files = len(glob.glob(f"{config.AUDIO_QUEUE_DIR}/*.wav"))
+        # Test R2 connection
+        r2_connected = r2_storage.test_connection()
 
-    return {
-        "current_month": {
-            "files_processed": total_files,
-            "total_cost_usd": round(total_cost, 4),
-            "estimated_monthly_cost": round(total_cost * 30 / now.day, 2) if now.day > 0 else 0
-        },
-        "queue": {
-            "pending_files": queue_files,
-            "next_batch_in_seconds": config.BATCH_DURATION_SECONDS
-        },
-        "config": {
-            "batch_duration_seconds": config.BATCH_DURATION_SECONDS,
-            "max_batch_size_mb": config.MAX_BATCH_SIZE_MB,
-            "groq_model": config.GROQ_MODEL,
-            "cost_per_hour": transcription_service.cost_per_hour
+        return {
+            "environment": config.ENVIRONMENT,
+            "r2_bucket": config.R2_BUCKET_NAME,
+            "r2_connected": r2_connected,
+            "current_month": {
+                "files_processed": month_stats['total_files'],
+                "total_cost_usd": month_stats['total_cost_usd'],
+                "storage_cost_usd": month_stats['storage_cost_usd'],
+                "total_size_mb": month_stats['total_size_mb'],
+                "estimated_monthly_cost": round(month_stats['total_cost_usd'] * 30 / now.day, 2) if now.day > 0 else 0
+            },
+            "queue": {
+                "pending_files": queue_files,
+                "next_batch_in_seconds": config.BATCH_DURATION_SECONDS
+            },
+            "config": {
+                "batch_duration_seconds": config.BATCH_DURATION_SECONDS,
+                "max_batch_size_mb": config.MAX_BATCH_SIZE_MB,
+                "groq_model": config.GROQ_MODEL,
+                "cost_per_hour": transcription_service.cost_per_hour
+            }
         }
-    }
+    except Exception as e:
+        logger.error(f"Error getting stats: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Background task to process audio batches
 async def process_audio_batch():

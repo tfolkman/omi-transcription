@@ -6,7 +6,7 @@ from groq import Groq
 from datetime import datetime
 import logging
 from config import config
-from models import Transcript, get_db
+from r2_storage import R2Storage
 
 logger = logging.getLogger(__name__)
 
@@ -14,6 +14,7 @@ class TranscriptionService:
     def __init__(self):
         self.client = Groq(api_key=config.GROQ_API_KEY)
         self.cost_per_hour = 0.04  # whisper-large-v3-turbo
+        self.r2_storage = R2Storage(config)
 
     async def process_batch(self) -> List[Dict]:
         """Process all queued audio files"""
@@ -37,8 +38,10 @@ class TranscriptionService:
                 if len(parts) >= 3 and parts[0] == 'audio':
                     # Join all parts except first (audio) and last (timestamp)
                     uid = '_'.join(parts[1:-1])
+                    timestamp = int(parts[-1])
                 else:
                     uid = 'unknown'
+                    timestamp = int(datetime.now().timestamp())
 
                 # Get file size for cost calculation
                 file_size_mb = os.path.getsize(audio_path) / (1024 * 1024)
@@ -66,30 +69,39 @@ class TranscriptionService:
                 estimated_minutes = 2
                 cost = (estimated_minutes / 60) * self.cost_per_hour
 
-                # Save to database
-                db = next(get_db())
-                transcript = Transcript(
-                    uid=uid,
-                    audio_filename=filename,
-                    transcript_text=transcription.text,
-                    duration_seconds=processing_time,
-                    cost_usd=cost
-                )
-                db.add(transcript)
-                db.commit()
-
-                # Delete processed audio file
-                os.remove(audio_path)
-
-                results.append({
+                # Create transcript data object
+                transcript_data = {
                     'uid': uid,
-                    'filename': filename,
-                    'transcript': transcription.text,
-                    'cost': cost,
-                    'processing_time': processing_time
-                })
+                    'timestamp': timestamp,
+                    'audio_filename': filename,
+                    'transcript_text': transcription.text,
+                    'duration_seconds': processing_time,
+                    'cost_usd': cost,
+                    'created_at': datetime.utcnow().isoformat(),
+                    'processed_at': datetime.utcnow().isoformat(),
+                    'file_size_mb': file_size_mb,
+                    'groq_model': config.GROQ_MODEL
+                }
 
-                logger.info(f"Successfully processed {filename}")
+                # Save to R2
+                r2_key = self.r2_storage.save_transcript(transcript_data)
+
+                if r2_key:
+                    # Delete processed audio file only if successfully saved to R2
+                    os.remove(audio_path)
+
+                    results.append({
+                        'uid': uid,
+                        'filename': filename,
+                        'transcript': transcription.text,
+                        'cost': cost,
+                        'processing_time': processing_time,
+                        'r2_key': r2_key
+                    })
+
+                    logger.info(f"Successfully processed {filename} and saved to R2: {r2_key}")
+                else:
+                    logger.error(f"Failed to save {filename} to R2, keeping audio file")
 
             except Exception as e:
                 logger.error(f"Error processing {audio_path}: {str(e)}")

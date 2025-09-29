@@ -4,8 +4,18 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Config:
+    # Environment
+    ENVIRONMENT = os.getenv("ENVIRONMENT", "dev")  # dev or prod
+
     # API Keys
     GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+
+    # Cloudflare R2 Configuration
+    R2_ACCOUNT_ID = os.getenv("R2_ACCOUNT_ID")
+    R2_ACCESS_KEY_ID = os.getenv("R2_ACCESS_KEY_ID")
+    R2_SECRET_ACCESS_KEY = os.getenv("R2_SECRET_ACCESS_KEY")
+    # Bucket name is auto-selected based on environment
+    R2_BUCKET_NAME = "omi-dev" if ENVIRONMENT == "dev" else "omi"
 
     # Batching settings
     BATCH_DURATION_SECONDS = int(os.getenv("BATCH_DURATION_SECONDS", 120))
@@ -15,13 +25,11 @@ class Config:
     if os.path.exists("/.dockerenv"):
         # Running in Docker
         AUDIO_QUEUE_DIR = "/app/data/audio_queue"
-        TRANSCRIPT_DB = "/app/data/transcripts.db"
     else:
         # Running locally
         BASE_DIR = os.path.dirname(os.path.abspath(__file__))
         DATA_DIR = os.path.join(BASE_DIR, "data")
         AUDIO_QUEUE_DIR = os.path.join(DATA_DIR, "audio_queue")
-        TRANSCRIPT_DB = os.path.join(DATA_DIR, "transcripts.db")
 
     # Server settings
     PORT = int(os.getenv("PORT", 8000))
@@ -36,8 +44,16 @@ class Config:
         if not cls.GROQ_API_KEY:
             raise ValueError("GROQ_API_KEY is required")
 
+        if not cls.R2_ACCOUNT_ID:
+            raise ValueError("R2_ACCOUNT_ID is required")
+
+        if not cls.R2_ACCESS_KEY_ID:
+            raise ValueError("R2_ACCESS_KEY_ID is required")
+
+        if not cls.R2_SECRET_ACCESS_KEY:
+            raise ValueError("R2_SECRET_ACCESS_KEY is required")
+
         # Create directories if they don't exist
         os.makedirs(cls.AUDIO_QUEUE_DIR, exist_ok=True)
-        os.makedirs(os.path.dirname(cls.TRANSCRIPT_DB), exist_ok=True)
 
 config = Config()
