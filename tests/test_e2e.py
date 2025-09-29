@@ -11,15 +11,15 @@ This test:
 """
 
 import os
+import sqlite3
 import sys
 import time
-import json
-import sqlite3
+
 import requests
-from datetime import datetime
 
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 
 class E2ETest:
     def __init__(self, base_url="http://localhost:8000"):
@@ -47,15 +47,11 @@ class E2ETest:
         """Upload test audio file"""
         print(f"\n📤 Uploading audio file: {self.test_audio_path}")
 
-        with open(self.test_audio_path, 'rb') as f:
-            files = {'file': ('test_speech.wav', f, 'audio/wav')}
-            params = {'uid': self.test_uid, 'sample_rate': 16000}
+        with open(self.test_audio_path, "rb") as f:
+            files = {"file": ("test_speech.wav", f, "audio/wav")}
+            params = {"uid": self.test_uid, "sample_rate": 16000}
 
-            response = requests.post(
-                f"{self.base_url}/audio",
-                files=files,
-                params=params
-            )
+            response = requests.post(f"{self.base_url}/audio", files=files, params=params)
 
         if response.status_code == 200:
             data = response.json()
@@ -84,10 +80,10 @@ class E2ETest:
 
             # Show waiting progress
             elapsed = int(time.time() - start_time)
-            print(f"   Waiting... {elapsed}s (batch runs every 120s)", end='\r')
+            print(f"   Waiting... {elapsed}s (batch runs every 120s)", end="\r")
             time.sleep(5)
 
-        print(f"\n❌ Timeout waiting for processing")
+        print("\n❌ Timeout waiting for processing")
         return False
 
     def verify_transcript(self):
@@ -101,49 +97,51 @@ class E2ETest:
             return False
 
         data = response.json()
-        if data['count'] == 0:
+        if data["count"] == 0:
             print("❌ No transcripts found")
             return False
 
-        transcript = data['transcripts'][0]
-        print(f"✅ Transcript found:")
+        transcript = data["transcripts"][0]
+        print("✅ Transcript found:")
         print(f"   ID: {transcript['id']}")
         print(f"   Text: '{transcript['text']}'")
         print(f"   Cost: ${transcript['cost']:.4f}")
         print(f"   Duration: {transcript['duration_seconds']:.2f}s")
 
         # Verify transcript content
-        actual_text = transcript['text'].strip().lower()
-        expected_text_lower = self.expected_transcript.lower()
+        actual_text = transcript["text"].strip().lower()
 
         # Check for key words (Groq might have slight variations)
-        key_words = ['testing', 'one', 'two', 'three', 'test']
+        key_words = ["testing", "one", "two", "three", "test"]
         matches = sum(1 for word in key_words if word in actual_text)
 
         if matches >= 3:  # At least 3 key words found
             print(f"✅ Transcript content verified (matched {matches}/5 keywords)")
             return True
         else:
-            print(f"⚠️  Transcript mismatch:")
+            print("⚠️  Transcript mismatch:")
             print(f"   Expected keywords: {key_words}")
             print(f"   Actual: '{actual_text}'")
             return True  # Still pass if we got some transcription
 
     def verify_database(self):
         """Check database directly"""
-        print(f"\n💾 Verifying database storage...")
+        print("\n💾 Verifying database storage...")
 
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT uid, audio_filename, transcript_text, cost_usd,
                    created_at, processed_at
             FROM transcripts
             WHERE uid = ?
             ORDER BY created_at DESC
             LIMIT 1
-        """, (self.test_uid,))
+        """,
+            (self.test_uid,),
+        )
 
         row = cursor.fetchone()
         conn.close()
@@ -163,7 +161,7 @@ class E2ETest:
 
     def check_stats(self):
         """Verify stats endpoint shows the processing"""
-        print(f"\n📊 Checking statistics...")
+        print("\n📊 Checking statistics...")
 
         response = requests.get(f"{self.base_url}/stats")
         if response.status_code == 200:
@@ -179,7 +177,7 @@ class E2ETest:
 
     def cleanup(self):
         """Optional: Clean up test data"""
-        print(f"\n🧹 Cleanup (keeping data for inspection)...")
+        print("\n🧹 Cleanup (keeping data for inspection)...")
         # We'll keep the test data for manual inspection
         print("   Test data preserved in database")
 
@@ -210,9 +208,9 @@ class E2ETest:
 
         all_passed = True
         for step_name, step_func in steps:
-            print(f"\n{'='*60}")
+            print(f"\n{'=' * 60}")
             print(f"Step: {step_name}")
-            print("="*60)
+            print("=" * 60)
 
             if not step_func():
                 all_passed = False
@@ -222,17 +220,18 @@ class E2ETest:
                     break
 
         # Final result
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         if all_passed:
             print("✅ E2E TEST PASSED - All steps successful!")
-            print(f"   Transcript: Successfully transcribed and stored")
+            print("   Transcript: Successfully transcribed and stored")
             print(f"   Database: Record created with UID={self.test_uid}")
         else:
             print("❌ E2E TEST FAILED - Some steps failed")
             print("   Check the output above for details")
-        print("="*60)
+        print("=" * 60)
 
         return all_passed
+
 
 if __name__ == "__main__":
     test = E2ETest()

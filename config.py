@@ -1,7 +1,9 @@
 import os
+
 from dotenv import load_dotenv
 
 load_dotenv()
+
 
 class Config:
     # Environment
@@ -14,8 +16,8 @@ class Config:
     R2_ACCOUNT_ID = os.getenv("R2_ACCOUNT_ID")
     R2_ACCESS_KEY_ID = os.getenv("R2_ACCESS_KEY_ID")
     R2_SECRET_ACCESS_KEY = os.getenv("R2_SECRET_ACCESS_KEY")
-    # Bucket name is auto-selected based on environment
-    R2_BUCKET_NAME = "omi-dev" if ENVIRONMENT == "dev" else "omi"
+    # Bucket name can be explicitly set or auto-selected based on environment
+    R2_BUCKET_NAME = os.getenv("R2_BUCKET_NAME") or ("omi-dev" if ENVIRONMENT in ["dev", "development"] else "omi")
 
     # Batching settings
     BATCH_DURATION_SECONDS = int(os.getenv("BATCH_DURATION_SECONDS", 120))
@@ -33,7 +35,7 @@ class Config:
 
     # Server settings
     PORT = int(os.getenv("PORT", 8000))
-    HOST = os.getenv("HOST", "0.0.0.0")
+    HOST = os.getenv("HOST", "0.0.0.0")  # nosec B104 - Binding to all interfaces is required for containerized deployment
 
     # Groq settings
     GROQ_MODEL = "whisper-large-v3-turbo"
@@ -55,5 +57,6 @@ class Config:
 
         # Create directories if they don't exist
         os.makedirs(cls.AUDIO_QUEUE_DIR, exist_ok=True)
+
 
 config = Config()

@@ -6,8 +6,7 @@ Uses pydub library which can handle various audio formats
 
 import os
 import sys
-import wave
-import struct
+
 
 def convert_m4a_to_wav_simple(input_file, output_file):
     """
@@ -17,13 +16,21 @@ def convert_m4a_to_wav_simple(input_file, output_file):
 
     # Try ffmpeg first
     try:
-        result = subprocess.run([
-            'ffmpeg', '-i', input_file,
-            '-ar', '16000',  # 16kHz sample rate
-            '-ac', '1',      # Mono
-            '-y',            # Overwrite
-            output_file
-        ], capture_output=True, text=True)
+        result = subprocess.run(
+            [
+                "ffmpeg",
+                "-i",
+                input_file,
+                "-ar",
+                "16000",  # 16kHz sample rate
+                "-ac",
+                "1",  # Mono
+                "-y",  # Overwrite
+                output_file,
+            ],
+            capture_output=True,
+            text=True,
+        )
 
         if result.returncode == 0:
             print(f"✅ Converted using ffmpeg: {output_file}")
@@ -33,10 +40,11 @@ def convert_m4a_to_wav_simple(input_file, output_file):
 
     # Try afconvert (macOS)
     try:
-        result = subprocess.run([
-            'afconvert', '-f', 'WAVE', '-d', 'LEI16@16000',
-            '-c', '1', input_file, output_file
-        ], capture_output=True, text=True)
+        result = subprocess.run(
+            ["afconvert", "-f", "WAVE", "-d", "LEI16@16000", "-c", "1", input_file, output_file],
+            capture_output=True,
+            text=True,
+        )
 
         if result.returncode == 0:
             print(f"✅ Converted using afconvert: {output_file}")
@@ -47,6 +55,7 @@ def convert_m4a_to_wav_simple(input_file, output_file):
     print("❌ Neither ffmpeg nor afconvert available")
     print("   Install ffmpeg: brew install ffmpeg")
     return False
+
 
 def try_pydub_conversion(input_file, output_file):
     """
@@ -72,6 +81,7 @@ def try_pydub_conversion(input_file, output_file):
     except Exception as e:
         print(f"❌ pydub conversion failed: {e}")
         return False
+
 
 if __name__ == "__main__":
     input_m4a = "tests/fixtures/test.m4a"

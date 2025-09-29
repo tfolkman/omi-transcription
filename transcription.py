@@ -1,14 +1,15 @@
-import os
 import glob
-import asyncio
-from typing import List, Dict
-from groq import Groq
-from datetime import datetime
 import logging
+import os
+from datetime import datetime
+
+from groq import Groq
+
 from config import config
 from r2_storage import R2Storage
 
 logger = logging.getLogger(__name__)
+
 
 class TranscriptionService:
     def __init__(self):
@@ -16,9 +17,9 @@ class TranscriptionService:
         self.cost_per_hour = 0.04  # whisper-large-v3-turbo
         self.r2_storage = R2Storage(config)
 
-    async def process_batch(self) -> List[Dict]:
+    async def process_batch(self) -> list[dict]:
         """Process all queued audio files"""
-        results = []
+        results: list[dict] = []
         audio_files = glob.glob(f"{config.AUDIO_QUEUE_DIR}/*.wav")
 
         if not audio_files:
@@ -32,15 +33,15 @@ class TranscriptionService:
                 # Extract metadata from filename (format: audio_UID_TIMESTAMP.wav)
                 filename = os.path.basename(audio_path)
                 # Remove .wav extension and split
-                name_without_ext = filename.replace('.wav', '')
+                name_without_ext = filename.replace(".wav", "")
                 # Split only at the first and last underscore to handle UIDs with underscores
-                parts = name_without_ext.split('_')
-                if len(parts) >= 3 and parts[0] == 'audio':
+                parts = name_without_ext.split("_")
+                if len(parts) >= 3 and parts[0] == "audio":
                     # Join all parts except first (audio) and last (timestamp)
-                    uid = '_'.join(parts[1:-1])
+                    uid = "_".join(parts[1:-1])
                     timestamp = int(parts[-1])
                 else:
-                    uid = 'unknown'
+                    uid = "unknown"
                     timestamp = int(datetime.now().timestamp())
 
                 # Get file size for cost calculation
@@ -52,7 +53,7 @@ class TranscriptionService:
                     continue
 
                 # Transcribe with Groq
-                with open(audio_path, 'rb') as audio_file:
+                with open(audio_path, "rb") as audio_file:
                     start_time = datetime.now()
 
                     transcription = self.client.audio.transcriptions.create(
@@ -60,7 +61,7 @@ class TranscriptionService:
                         model=config.GROQ_MODEL,
                         language="en",
                         temperature=0.0,
-                        response_format="json"
+                        response_format="json",
                     )
 
                     processing_time = (datetime.now() - start_time).total_seconds()
@@ -71,16 +72,16 @@ class TranscriptionService:
 
                 # Create transcript data object
                 transcript_data = {
-                    'uid': uid,
-                    'timestamp': timestamp,
-                    'audio_filename': filename,
-                    'transcript_text': transcription.text,
-                    'duration_seconds': processing_time,
-                    'cost_usd': cost,
-                    'created_at': datetime.utcnow().isoformat(),
-                    'processed_at': datetime.utcnow().isoformat(),
-                    'file_size_mb': file_size_mb,
-                    'groq_model': config.GROQ_MODEL
+                    "uid": uid,
+                    "timestamp": timestamp,
+                    "audio_filename": filename,
+                    "transcript_text": transcription.text,
+                    "duration_seconds": processing_time,
+                    "cost_usd": cost,
+                    "created_at": datetime.utcnow().isoformat(),
+                    "processed_at": datetime.utcnow().isoformat(),
+                    "file_size_mb": file_size_mb,
+                    "groq_model": config.GROQ_MODEL,
                 }
 
                 # Save to R2
@@ -90,14 +91,16 @@ class TranscriptionService:
                     # Delete processed audio file only if successfully saved to R2
                     os.remove(audio_path)
 
-                    results.append({
-                        'uid': uid,
-                        'filename': filename,
-                        'transcript': transcription.text,
-                        'cost': cost,
-                        'processing_time': processing_time,
-                        'r2_key': r2_key
-                    })
+                    results.append(
+                        {
+                            "uid": uid,
+                            "filename": filename,
+                            "transcript": transcription.text,
+                            "cost": cost,
+                            "processing_time": processing_time,
+                            "r2_key": r2_key,
+                        }
+                    )
 
                     logger.info(f"Successfully processed {filename} and saved to R2: {r2_key}")
                 else:
@@ -108,5 +111,6 @@ class TranscriptionService:
                 # Don't delete file on error, try again next batch
 
         return results
+
 
 transcription_service = TranscriptionService()
