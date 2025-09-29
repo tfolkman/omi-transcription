@@ -43,6 +43,11 @@ class R2Storage:
             import urllib3
 
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+            # Force TLS 1.2+ to avoid SSLv3 handshake failures
+            os.environ["PROTOCOL_TLS_CLIENT"] = "TLSv1.2"
+            os.environ["OPENSSL_CONF"] = ""  # Disable OpenSSL config that might force old protocols
+
             verify_ssl = False
             logger.warning("CI environment detected: SSL verification DISABLED for R2 connection")
             logger.info(f"SSL verify setting: {verify_ssl}")

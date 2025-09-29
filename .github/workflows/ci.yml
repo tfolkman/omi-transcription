@@ -106,7 +106,9 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg ca-certificates
+          sudo apt-get install -y ffmpeg ca-certificates openssl
+          # Update OpenSSL and ca-certificates to latest
+          sudo apt-get upgrade -y openssl ca-certificates
 
       - name: Create test audio file
         run: |
