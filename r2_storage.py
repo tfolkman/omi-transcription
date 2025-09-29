@@ -46,7 +46,7 @@ class R2Storage:
 
         logger.info(f"R2 Storage initialized for {self.environment} environment using bucket: {self.bucket_name}")
 
-    def _rate_limit(self):
+    def _rate_limit(self) -> None:
         """Add rate limiting to prevent Cloudflare DDoS protection triggering"""
         if os.environ.get("CI") == "true" or os.environ.get("GITHUB_ACTIONS") == "true":
             # In CI, add a small delay to prevent rapid requests
@@ -99,6 +99,8 @@ class R2Storage:
         except Exception as e:
             logger.error(f"Unexpected error saving to R2: {e}")
             return None
+        # This should never be reached, but mypy needs it
+        return None
 
     def get_transcript(self, key: str) -> dict | None:
         """
