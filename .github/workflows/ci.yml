@@ -113,11 +113,8 @@ jobs:
     if: github.event_name == 'pull_request' && github.event.pull_request.head.ref != 'main'
 
     steps:
-      - name: Auto-merge PR
-        uses: pascalgn/merge-action@v0.15.6
+      - name: Enable auto-merge
+        run: |
+          gh pr merge --auto --squash "${{ github.event.pull_request.number }}"
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          MERGE_LABELS: "automerge,!wip,!work in progress"
-          MERGE_METHOD: "squash"
-          MERGE_COMMIT_MESSAGE: "pull-request-title"
-          MERGE_REQUIRED_APPROVALS: "0"
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
