@@ -20,8 +20,14 @@ class R2Storage:
         self.bucket_name = config.R2_BUCKET_NAME
         self.environment = config.ENVIRONMENT
 
-        # Detect CI environment
-        is_ci = os.environ.get("CI") == "true" or os.environ.get("GITHUB_ACTIONS") == "true"
+        # Detect CI environment with detailed logging
+        ci_env = os.environ.get("CI")
+        github_actions_env = os.environ.get("GITHUB_ACTIONS")
+        is_ci = ci_env == "true" or github_actions_env == "true"
+
+        logger.info(f"Environment detection - CI: {ci_env}, GITHUB_ACTIONS: {github_actions_env}, is_ci: {is_ci}")
+        logger.info(f"Python version: {os.sys.version}")
+        logger.info(f"Environment: {self.environment}, Bucket: {self.bucket_name}")
 
         # Configure boto3 with better SSL handling
         boto_config = Config(
@@ -38,13 +44,14 @@ class R2Storage:
 
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
             verify_ssl = False
-            logger.info("CI environment detected: SSL verification disabled for R2 connection")
+            logger.warning("CI environment detected: SSL verification DISABLED for R2 connection")
+            logger.info(f"SSL verify setting: {verify_ssl}")
         else:
             # In production/local environments, use proper SSL verification
             os.environ["SSL_CERT_FILE"] = certifi.where()
             os.environ["REQUESTS_CA_BUNDLE"] = certifi.where()
             verify_ssl = certifi.where()
-            logger.info("Production/local environment: SSL verification enabled")
+            logger.info(f"Production/local environment: SSL verification enabled with cert file: {verify_ssl}")
 
         self.client = boto3.client(
             "s3",
