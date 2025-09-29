@@ -268,6 +268,8 @@ class R2Storage:
             logger.error(f"Failed to connect to R2: {e}")
             # Log more details about SSL errors in CI
             if "SSL" in str(e) or "handshake" in str(e).lower():
-                logger.error(f"SSL Error Details - Environment: {os.environ.get('CI', 'local')}, "
-                           f"GitHub Actions: {os.environ.get('GITHUB_ACTIONS', 'false')}")
+                logger.error(
+                    f"SSL Error Details - Environment: {os.environ.get('CI', 'local')}, "
+                    f"GitHub Actions: {os.environ.get('GITHUB_ACTIONS', 'false')}"
+                )
             return False
