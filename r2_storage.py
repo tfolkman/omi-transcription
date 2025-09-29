@@ -1,8 +1,12 @@
 import json
 import logging
+import os
+import ssl
 from datetime import datetime
 
 import boto3
+import certifi
+from botocore.config import Config
 from botocore.exceptions import ClientError
 
 logger = logging.getLogger(__name__)
@@ -16,12 +20,25 @@ class R2Storage:
         self.bucket_name = config.R2_BUCKET_NAME
         self.environment = config.ENVIRONMENT
 
+        # Set SSL certificate bundle for CI environments
+        os.environ["SSL_CERT_FILE"] = certifi.where()
+        os.environ["REQUESTS_CA_BUNDLE"] = certifi.where()
+
+        # Configure boto3 with better SSL handling for CI environments
+        boto_config = Config(
+            signature_version="s3v4",
+            retries={"max_attempts": 3, "mode": "adaptive"},
+            s3={"addressing_style": "path"},
+        )
+
         self.client = boto3.client(
             "s3",
             endpoint_url=f"https://{self.account_id}.r2.cloudflarestorage.com",
             aws_access_key_id=self.access_key,
             aws_secret_access_key=self.secret_key,
             region_name="auto",
+            config=boto_config,
+            verify=certifi.where(),  # Use certifi's CA bundle
         )
 
         logger.info(f"R2 Storage initialized for {self.environment} environment using bucket: {self.bucket_name}")
