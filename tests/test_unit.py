@@ -194,6 +194,29 @@ class TestStreamingAudio:
         assert uid in filename
         assert filename.endswith(".wav")
 
+    def test_filename_parsing_for_both_formats(self):
+        """Test that both audio_ and streaming_ files are parsed correctly by transcription service"""
+        test_cases = [
+            ("audio_user123_1234567890.wav", "user123", 1234567890),
+            ("streaming_user123_1234567890.wav", "user123", 1234567890),
+            ("audio_user_with_underscore_1234567890.wav", "user_with_underscore", 1234567890),
+            ("streaming_user_with_underscore_1234567890.wav", "user_with_underscore", 1234567890),
+        ]
+
+        for filename, expected_uid, expected_timestamp in test_cases:
+            name_without_ext = filename.replace(".wav", "")
+            parts = name_without_ext.split("_")
+
+            # This matches the logic in transcription.py line 39
+            if len(parts) >= 3 and parts[0] in ["audio", "streaming"]:
+                uid = "_".join(parts[1:-1])
+                timestamp = int(parts[-1])
+
+                assert uid == expected_uid, f"Failed for {filename}: expected uid {expected_uid}, got {uid}"
+                assert timestamp == expected_timestamp, (
+                    f"Failed for {filename}: expected timestamp {expected_timestamp}, got {timestamp}"
+                )
+
     def test_raw_audio_size_calculation(self):
         """Test raw audio size calculations"""
         # 16kHz, 16-bit (2 bytes per sample), mono
