@@ -171,7 +171,9 @@ async def startup_event():
     # Log environment details for debugging
     logger.info("=" * 60)
     logger.info("Application starting up...")
-    logger.info(f"Environment variables - CI: {os.environ.get('CI')}, GITHUB_ACTIONS: {os.environ.get('GITHUB_ACTIONS')}")
+    logger.info(
+        f"Environment variables - CI: {os.environ.get('CI')}, GITHUB_ACTIONS: {os.environ.get('GITHUB_ACTIONS')}"
+    )
     logger.info(f"Config - ENVIRONMENT: {config.ENVIRONMENT}, BUCKET: {config.R2_BUCKET_NAME}")
     logger.info(f"Python version: {os.sys.version}")
     logger.info("=" * 60)
