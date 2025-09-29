@@ -1,7 +1,9 @@
 import os
+
 from dotenv import load_dotenv
 
 load_dotenv()
+
 
 class Config:
     # Environment
@@ -33,7 +35,7 @@ class Config:
 
     # Server settings
     PORT = int(os.getenv("PORT", 8000))
-    HOST = os.getenv("HOST", "0.0.0.0")
+    HOST = os.getenv("HOST", "0.0.0.0")  # nosec B104 - Binding to all interfaces is required for containerized deployment
 
     # Groq settings
     GROQ_MODEL = "whisper-large-v3-turbo"
@@ -55,5 +57,6 @@ class Config:
 
         # Create directories if they don't exist
         os.makedirs(cls.AUDIO_QUEUE_DIR, exist_ok=True)
+
 
 config = Config()

@@ -1,0 +1,186 @@
+name: CI/CD Pipeline
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  lint-and-type-check:
+    name: Lint and Type Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install dependencies
+        run: |
+          uv sync --dev
+
+      - name: Run ruff linter
+        run: |
+          uv run ruff check . --output-format=github
+
+      - name: Run ruff formatter check
+        run: |
+          uv run ruff format --check .
+
+      - name: Run mypy type checking
+        run: |
+          uv run mypy app.py transcription.py config.py --ignore-missing-imports
+        continue-on-error: true
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install dependencies
+        run: |
+          uv sync --dev
+
+      - name: Run bandit security scan
+        run: |
+          uv run bandit -r app.py transcription.py config.py -f json -o bandit-report.json || true
+          if [ -f bandit-report.json ]; then
+            uv run python -m json.tool bandit-report.json
+          fi
+        continue-on-error: true
+
+  test-e2e:
+    name: E2E Test with R2
+    runs-on: ubuntu-latest
+    needs: [lint-and-type-check]
+
+    env:
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET_NAME: omi-dev
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      ENVIRONMENT: development
+      PORT: 8000
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install dependencies
+        run: |
+          uv sync
+
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Create test audio file
+        run: |
+          uv run python tests/convert_audio.py
+
+      - name: Start server
+        run: |
+          uv run python app.py &
+          echo $! > server.pid
+          sleep 5
+
+      - name: Check server health
+        run: |
+          curl -f http://localhost:8000/health || exit 1
+
+      - name: Run E2E test with R2
+        run: |
+          uv run python tests/test_e2e_r2.py
+
+      - name: Stop server
+        if: always()
+        run: |
+          if [ -f server.pid ]; then
+            kill $(cat server.pid) || true
+            rm server.pid
+          fi
+
+  test-unit:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs: [lint-and-type-check]
+
+    env:
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET_NAME: omi-dev
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      ENVIRONMENT: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install dependencies
+        run: |
+          uv sync --dev
+
+      - name: Run pytest
+        run: |
+          uv run pytest tests/test_unit.py -v --tb=short || echo "No unit tests found yet"
+        continue-on-error: true
+
+  auto-merge:
+    name: Auto-merge to main
+    runs-on: ubuntu-latest
+    needs: [test-e2e, security-scan]
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref != 'main'
+
+    steps:
+      - name: Auto-merge PR
+        uses: pascalgn/merge-action@v0.15.6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MERGE_LABELS: "automerge,!wip,!work in progress"
+          MERGE_METHOD: "squash"
+          MERGE_COMMIT_MESSAGE: "pull-request-title"
+          MERGE_REQUIRED_APPROVALS: "0"

@@ -1,4 +1,4 @@
-.PHONY: help install run test test-e2e test-local clean docker-build docker-run docker-stop
+.PHONY: help install dev lint format test test-e2e test-unit run clean
 
 help: ## Show this help message
 	@echo "OMI Transcription Service - Available Commands:"
@@ -8,15 +8,37 @@ help: ## Show this help message
 install: ## Install dependencies with UV
 	uv sync
 
+dev: ## Install development dependencies
+	uv sync --dev
+
 run: ## Run the service locally
 	uv run python app.py
 
-test: test-local test-e2e ## Run all tests
+lint: ## Run linter checks
+	uv run ruff check .
 
-test-local: ## Run local unit tests (mocked)
-	uv run python test_local.py
+format: ## Format code with ruff
+	uv run ruff format .
 
-test-e2e: ## Run end-to-end test (requires server running)
+type-check: ## Run type checking with mypy
+	uv run mypy app.py transcription.py config.py --ignore-missing-imports
+
+security: ## Run security scan with bandit
+	uv run bandit -r app.py transcription.py config.py
+
+test-unit: ## Run unit tests
+	uv run pytest tests/test_unit.py -v
+
+test-e2e-r2: ## Run E2E test with R2 storage
+	@echo "Ensuring test audio exists..."
+	@if [ ! -f tests/fixtures/test_speech.wav ]; then \
+		echo "Converting audio..."; \
+		uv run python tests/convert_audio.py; \
+	fi
+	@echo "Running E2E test with R2..."
+	uv run python tests/test_e2e_r2.py
+
+test-e2e: ## Run legacy E2E test (SQLite)
 	@echo "Ensuring test audio exists..."
 	@if [ ! -f tests/fixtures/test_speech.wav ]; then \
 		echo "Converting audio..."; \
@@ -24,6 +46,17 @@ test-e2e: ## Run end-to-end test (requires server running)
 	fi
 	@echo "Running E2E test..."
 	uv run python tests/test_e2e.py
+
+test: test-unit test-e2e-r2 ## Run all tests
+
+ci-local: ## Run all CI checks locally
+	@echo "Running CI checks locally..."
+	$(MAKE) lint
+	$(MAKE) format --check .
+	$(MAKE) type-check
+	$(MAKE) security
+	$(MAKE) test-unit
+	@echo "✅ All CI checks passed!"
 
 test-api: ## Test API endpoints with curl
 	./test_api.sh
