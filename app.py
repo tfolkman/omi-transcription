@@ -4,7 +4,7 @@ import os
 from datetime import datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import JSONResponse
 
 from audio_utils import add_wav_header_to_raw_audio, validate_audio_params
@@ -28,6 +28,20 @@ scheduler = AsyncIOScheduler()
 # Initialize R2 storage
 r2_storage = R2Storage(config)
 
+# API Key Authentication
+API_KEY = os.getenv("API_KEY")
+
+
+async def verify_api_key(request: Request):
+    """Verify API key for protected endpoints."""
+    if not API_KEY:
+        return None
+
+    api_key = request.headers.get("X-API-Key")
+    if api_key != API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+    return api_key
+
 
 # Health check endpoint
 @app.get("/health")
@@ -46,6 +60,7 @@ async def receive_audio(
     file: UploadFile = File(...),
     uid: str = Query(..., description="User ID"),
     sample_rate: int | None = Query(16000, description="Sample rate"),  # noqa: ARG001
+    _api_key: str | None = Depends(verify_api_key),
 ):
     """
     Receive audio from OMI device and queue for processing
@@ -87,6 +102,7 @@ async def receive_streaming_audio(
     request: Request,
     uid: str | None = Query(None, description="User ID"),
     sample_rate: int | None = Query(None, description="Sample rate"),
+    _api_key: str | None = Depends(verify_api_key),
 ):
     """
     Receive raw audio bytes from OMI device real-time streaming.
@@ -159,7 +175,11 @@ async def receive_streaming_audio(
 
 # Get transcripts for a user
 @app.get("/transcripts/{uid}")
-async def get_transcripts(uid: str, limit: int = Query(10, ge=1, le=100)):
+async def get_transcripts(
+    uid: str,
+    limit: int = Query(10, ge=1, le=100),
+    _api_key: str | None = Depends(verify_api_key),
+):
     """
     Get transcripts for a specific user from R2
     """
