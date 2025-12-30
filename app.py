@@ -4,7 +4,7 @@ import os
 from datetime import datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import JSONResponse
 
 from audio_utils import add_wav_header_to_raw_audio, validate_audio_params
@@ -28,6 +28,20 @@ scheduler = AsyncIOScheduler()
 # Initialize R2 storage
 r2_storage = R2Storage(config)
 
+# API Key Authentication
+API_KEY = os.getenv("API_KEY")
+
+
+async def verify_api_key(request: Request):
+    """Verify API key for protected endpoints."""
+    if not API_KEY:
+        return None
+
+    api_key = request.headers.get("X-API-Key")
+    if api_key != API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+    return api_key
+
 
 # Health check endpoint
 @app.get("/health")
@@ -46,6 +60,7 @@ async def receive_audio(
     file: UploadFile = File(...),
     uid: str = Query(..., description="User ID"),
     sample_rate: int | None = Query(16000, description="Sample rate"),  # noqa: ARG001
+    _api_key: str | None = Depends(verify_api_key),
 ):
     """
     Receive audio from OMI device and queue for processing
@@ -87,6 +102,7 @@ async def receive_streaming_audio(
     request: Request,
     uid: str | None = Query(None, description="User ID"),
     sample_rate: int | None = Query(None, description="Sample rate"),
+    _api_key: str | None = Depends(verify_api_key),
 ):
     """
     Receive raw audio bytes from OMI device real-time streaming.
@@ -112,6 +128,27 @@ async def receive_streaming_audio(
             logger.warning("[STREAMING] No audio data received - empty request body")
             raise HTTPException(status_code=400, detail="No audio data received")
 
+        # Validate audio size (at least 1 second of audio)
+        MIN_AUDIO_SIZE = sample_rate * 2  # sample_rate * 2 bytes per sample
+        if raw_audio_size < MIN_AUDIO_SIZE:
+            logger.warning(
+                f"[STREAMING] Audio too short: {raw_audio_size} bytes < {MIN_AUDIO_SIZE} bytes (1s minimum at {sample_rate}Hz)"
+            )
+            # Continue processing but log warning
+
+        # Validate even byte count for PCM16 (2 bytes per sample)
+        if raw_audio_size % 2 != 0:
+            logger.error(
+                f"[STREAMING] Odd byte count detected: {raw_audio_size} bytes - PCM16 requires even bytes!"
+            )
+            raw_audio = raw_audio[:-1]
+            raw_audio_size = len(raw_audio)
+            logger.info(f"[STREAMING] Trimmed to {raw_audio_size} bytes")
+
+        # Calculate duration
+        duration_seconds = raw_audio_size / (sample_rate * 2)
+        logger.info(f"[STREAMING] Audio duration: {duration_seconds:.2f}s at {sample_rate}Hz PCM16")
+
         # Add WAV header to raw audio
         wav_audio = add_wav_header_to_raw_audio(raw_audio, sample_rate)
         logger.info(f"[STREAMING] Added WAV header - total size now {len(wav_audio)} bytes")
@@ -130,10 +167,7 @@ async def receive_streaming_audio(
         # Calculate file size
         file_size_mb = len(wav_audio) / (1024 * 1024)
 
-        # Calculate approximate audio duration (16kHz, 16-bit mono)
-        audio_duration_seconds = raw_audio_size / (16000 * 2)  # 2 bytes per sample
-
-        logger.info(f"[STREAMING] File details - Size: {file_size_mb:.2f}MB, Duration: ~{audio_duration_seconds:.1f}s")
+        logger.info(f"[STREAMING] File details - Size: {file_size_mb:.2f}MB, Duration: {duration_seconds:.2f}s")
         logger.info(f"[STREAMING] Audio queued for transcription - will process in {config.BATCH_DURATION_SECONDS}s")
         logger.info("=" * 60)
 
@@ -159,7 +193,11 @@ async def receive_streaming_audio(
 
 # Get transcripts for a user
 @app.get("/transcripts/{uid}")
-async def get_transcripts(uid: str, limit: int = Query(10, ge=1, le=100)):
+async def get_transcripts(
+    uid: str,
+    limit: int = Query(10, ge=1, le=100),
+    _api_key: str | None = Depends(verify_api_key),
+):
     """
     Get transcripts for a specific user from R2
     """

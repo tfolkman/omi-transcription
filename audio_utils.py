@@ -3,7 +3,10 @@ Audio utilities for handling OMI real-time streaming audio.
 Includes WAV header generation for raw PCM audio bytes.
 """
 
+import logging
 import struct
+
+logger = logging.getLogger(__name__)
 
 
 def create_wav_header(
@@ -63,7 +66,25 @@ def add_wav_header_to_raw_audio(raw_audio: bytes, sample_rate: int = 16000) -> b
 
     Returns:
         Complete WAV file as bytes (header + audio data)
+
+    Raises:
+        ValueError: If audio data is empty or invalid
     """
+    # Validate input
+    if len(raw_audio) == 0:
+        raise ValueError("Empty audio data provided")
+
+    # Validate even byte count for PCM16 (2 bytes per sample)
+    if len(raw_audio) % 2 != 0:
+        logger.warning(f"Odd byte count: {len(raw_audio)} - trimming last byte for PCM16 alignment")
+        raw_audio = raw_audio[:-1]
+
+    # Log audio characteristics
+    duration = len(raw_audio) / (sample_rate * 2)
+    logger.info(
+        f"Creating WAV: {len(raw_audio)} bytes, {duration:.2f}s, {sample_rate}Hz, PCM16 little-endian"
+    )
+
     header = create_wav_header(len(raw_audio), sample_rate)
     return header + raw_audio
 
